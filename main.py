@@ -1,3 +1,6 @@
+import os
+import uuid
+import asyncio
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -7,58 +10,40 @@ from telegram import (
 )
 from telegram.ext import (
     ApplicationBuilder,
-    ContextTypes,
+    CommandHandler,
     InlineQueryHandler,
     CallbackQueryHandler,
+    ContextTypes,
 )
-import uuid
-import asyncio
 
-import os
-from telegram.ext import ApplicationBuilder, CommandHandler
+# ================== TOKEN ==================
 
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
     raise Exception("BOT_TOKEN tapılmadı")
-
-async def start(update, context):
-    await update.message.reply_text("Bot işləyir ✅")
-
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
-
-
-# burdan aşağı bot kodun davam edir
-
-
 
 # ================== SECRET STORAGE ==================
 
 SECRETS = {}  # secret_id -> {target, secret}
 
+# ================== /start ==================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 Bot işləyir ✅")
+
 # ================== INLINE QUERY ==================
 
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.inline_query.query.strip()
-    if not q:
+    query = update.inline_query.query.strip()
+    if not query:
         return
 
-    parts = q.split(" ", 1)
+    parts = query.split(" ", 1)
     if len(parts) < 2:
         return
 
     target = parts[0].lstrip("@").lower()
-    secret = parts[1]
-
-    # 🔒 istəsən limit qoya bilərsən (məs: 4000)
-    if len(secret) > 4000:
-        secret = secret[:4000]
+    secret = parts[1][:4000]  # limit
 
     secret_id = str(uuid.uuid4())
 
@@ -90,6 +75,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()  # loading söndür
 
     try:
         _, secret_id = query.data.split("|", 1)
@@ -108,24 +94,22 @@ async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(user.id)
     uname = (user.username or "").lower()
 
-    # ❌ Başqası açmağa çalışsa
+    # ❌ icazəsiz açma
     if uid != target and uname != target:
         await query.answer("Balam sən açma 😘", show_alert=True)
         return
 
-    # ✅ GİZLİ MESAJ POPUP
+    # ✅ gizli mesaj
     await query.answer(secret, show_alert=True)
 
-    # 🗑 1 dəfə oxundu → sil
+    # 🗑 bir dəfəlik
     del SECRETS[secret_id]
 
-    # ⏱ kiçik delay
     await asyncio.sleep(0.1)
 
-    # ✅ INLINE MESAJI EDİT ET
     try:
         await query.edit_message_text(
-            text=f"👁 Oxundu: {user.full_name or user.first_name}"
+            f"👁 Oxundu: {user.full_name or user.first_name}"
         )
     except:
         pass
@@ -135,6 +119,7 @@ async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(InlineQueryHandler(inline_query))
     app.add_handler(CallbackQueryHandler(open_secret))
 
@@ -143,5 +128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
