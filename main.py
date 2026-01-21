@@ -14,7 +14,7 @@ from telegram.ext import (
 import uuid
 import asyncio
 
-TOKEN = "8368620933:AAFrZYOFoVcQF6luL4Mv-N3xTTjiSi0SvAQ"
+TOKEN = "YOURTOKEN"
 
 # ================== SECRET STORAGE ==================
 
@@ -127,3 +127,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
