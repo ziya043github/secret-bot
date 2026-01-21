@@ -12,24 +12,20 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 import uuid
-import base64
-import json
+import asyncio
 
 TOKEN = "8368620933:AAFrZYOFoVcQF6luL4Mv-N3xTTjiSi0SvAQ"
 
+# ================== SECRET STORAGE ==================
 
-def pack_data(target, text):
-    data = {"t": target, "m": text}
-    raw = json.dumps(data).encode()
-    return base64.urlsafe_b64encode(raw).decode()
+SECRETS: dict[str, dict[str, str]] = {}
 
-
-def unpack_data(encoded):
-    raw = base64.urlsafe_b64decode(encoded.encode())
-    return json.loads(raw.decode())
-
+# ================== INLINE QUERY ==================
 
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.inline_query:
+        return
+
     q = update.inline_query.query.strip()
     if not q:
         return
@@ -39,57 +35,86 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target = parts[0].lstrip("@").lower()
-    secret = parts[1]
+    secret = parts[1][:4000]  # limit
 
-    packed = pack_data(target, secret)
+    secret_id = str(uuid.uuid4())
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👁 Gizli mesaj aç", callback_data=f"open|{packed}")]
-    ])
+    SECRETS[secret_id] = {
+        "target": target,
+        "secret": secret,
+    }
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(
+            text="👁 Gizli mesaj aç",
+            callback_data=f"open|{secret_id}"
+        )]]
+    )
 
     result = InlineQueryResultArticle(
-        id=str(uuid.uuid4()),
+        id=secret_id,
         title="🔒 Gizli mesaj",
         description=f"{target} üçün gizli mesaj",
         input_message_content=InputTextMessageContent(
-            f"🔐 {target} üçün gizli mesaj var"
+            message_text=f"🔐 {target} üçün gizli mesaj var"
         ),
         reply_markup=keyboard,
     )
 
-    await update.inline_query.answer([result], cache_time=0)
+    await update.inline_query.answer(
+        results=[result],
+        cache_time=0,
+        is_personal=True,
+    )
 
+# ================== OPEN SECRET ==================
 
 async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    if not query or not query.data:
+        return
 
-    try:
-        _, encoded = query.data.split("|", 1)
-        data = unpack_data(encoded)
-    except:
+    await query.answer()  # Telegram timeout olmasın
+
+    if not query.data.startswith("open|"):
+        return
+
+    secret_id = query.data.split("|", 1)[1]
+    data = SECRETS.get(secret_id)
+
+    if not data:
         await query.answer("Mesaj tapılmadı ❌", show_alert=True)
         return
 
-    target = data["t"]
-    secret = data["m"]
+    target = data["target"]
+    secret = data["secret"]
 
     user = query.from_user
     uid = str(user.id)
     uname = (user.username or "").lower()
 
+    # ❌ başqası açmağa çalışsa
     if uid != target and uname != target:
-        await query.answer(
-            "Bu gizli mesaj sənlik deyil ❌",
-            show_alert=True
-        )
+        await query.answer("Balam sən açma 😘", show_alert=True)
         return
 
-    # ✅ BURASI ƏSASDIR — QRUPDA AÇILIR, AMMA SADECE O ADAM GÖRÜR
-    await query.answer(
-        text=secret,
-        show_alert=True
-    )
+    # ✅ gizli mesaj popup
+    await query.answer(secret, show_alert=True)
 
+    # 🗑 bir dəfə oxundu → sil
+    SECRETS.pop(secret_id, None)
+
+    await asyncio.sleep(0.1)
+
+    # ✏️ inline mesajı edit et
+    try:
+        await query.edit_message_text(
+            text=f"👁 Oxundu: {user.full_name or user.first_name}"
+        )
+    except:
+        pass
+
+# ================== MAIN ==================
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -98,8 +123,7 @@ def main():
     app.add_handler(CallbackQueryHandler(open_secret))
 
     print("🤖 Bot işləyir...")
-    app.run_polling()
-
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
