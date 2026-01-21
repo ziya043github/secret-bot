@@ -16,7 +16,13 @@ import asyncio
 
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+if not BOT_TOKEN:
+    raise Exception("BOT_TOKEN tapılmadı")
+
+# burdan aşağı bot kodun davam edir
+
 
 
 # ================== SECRET STORAGE ==================
@@ -124,3 +130,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
