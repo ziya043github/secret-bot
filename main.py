@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -29,7 +30,7 @@ SECRETS = {}  # secret_id -> {target, secret}
 # ================== /start ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot işləyir ✅")
+    await update.message.reply_text("🤖 Bot işləyir ✅\n\nInline istifadə et:\n@botusername mesaj")
 
 # ================== INLINE QUERY ==================
 
@@ -38,25 +39,17 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query:
         return
 
-    parts = query.split(" ", 1)
-    if len(parts) < 2:
+    if " " not in query:
         return
 
-    target = parts[0].lstrip("@").lower()
-    secret = parts[1][:4000]  # limit
+    target, secret = query.split(" ", 1)
+    target = target.lstrip("@").lower()
 
     secret_id = str(uuid.uuid4())
-
-    SECRETS[secret_id] = {
-        "target": target,
-        "secret": secret,
-    }
+    SECRETS[secret_id] = {"target": target, "secret": secret}
 
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(
-            "👁 Gizli mesaj aç",
-            callback_data=f"open|{secret_id}"
-        )]]
+        [[InlineKeyboardButton("👁 Gizli mesajı aç", callback_data=f"open|{secret_id}")]]
     )
 
     result = InlineQueryResultArticle(
@@ -75,7 +68,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # loading söndür
+    await query.answer()
 
     try:
         _, secret_id = query.data.split("|", 1)
@@ -84,33 +77,23 @@ async def open_secret(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = None
 
     if not data:
-        await query.answer("Mesaj tapılmadı ❌", show_alert=True)
+        await query.answer("❌ Mesaj tapılmadı", show_alert=True)
         return
-
-    target = data["target"]
-    secret = data["secret"]
 
     user = query.from_user
-    uid = str(user.id)
-    uname = (user.username or "").lower()
+    target = data["target"]
 
-    # ❌ icazəsiz açma
-    if uid != target and uname != target:
-        await query.answer("Balam sən açma 😘", show_alert=True)
+    if str(user.id) != target and (user.username or "").lower() != target:
+        await query.answer("❌ Bu mesaj sənlik deyil", show_alert=True)
         return
 
-    # ✅ gizli mesaj
-    await query.answer(secret, show_alert=True)
-
-    # 🗑 bir dəfəlik
+    await query.answer(data["secret"], show_alert=True)
     del SECRETS[secret_id]
 
     await asyncio.sleep(0.1)
 
     try:
-        await query.edit_message_text(
-            f"👁 Oxundu: {user.full_name or user.first_name}"
-        )
+        await query.edit_message_text(f"👁 Oxundu: {user.full_name}")
     except:
         pass
 
